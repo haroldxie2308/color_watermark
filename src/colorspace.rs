@@ -1,0 +1,72 @@
+use image::{DynamicImage, GenericImageView, GenericImage};
+use yuvutils_rs::*;
+
+/// Takes an RGB DynamicImage and convert to YCrCb
+/// 
+/// Return values are saved in y_plane, cr_plane and cb_plane
+#[allow(non_snake_case)]
+pub fn convert_to_YCrCb(
+    image: &DynamicImage,
+    y_plane: &mut [u8],
+    cr_plane: &mut [u8],
+    cb_plane: &mut [u8]
+) {
+    let rgb = image.as_bytes();
+    let (width, height) = image.dimensions();
+    let (rgb_stride, y_stride, cr_stride, cb_stride) = get_strides(width, false);
+
+    rgb_to_yuv444(y_plane, y_stride,
+                  cr_plane, cr_stride,
+                  cb_plane, cb_stride,
+                  &rgb, rgb_stride,
+                  width, height, 
+                  YuvRange::Full, YuvStandardMatrix::Bt709);
+}
+
+/// Convert YCrCb to RGB DynamicImage
+#[allow(non_snake_case)]
+pub fn convert_to_RGB(
+    width: u32,
+    height: u32,
+    y_plane: &[u8],
+    cr_plane: &[u8],
+    cb_plane: &[u8]
+) -> DynamicImage {
+    let (rgb_stride, y_stride, cr_stride, cb_stride) = get_strides(width, false);
+    let mut rgb = vec![0_u8; (width * height * 3) as usize];
+
+    yuv444_to_rgb(&y_plane, y_stride, 
+                  &cr_plane, cr_stride,
+                  &cb_plane, cb_stride,
+                  rgb.as_mut_slice(), rgb_stride,
+                  width, height, 
+                  YuvRange::Full, YuvStandardMatrix::Bt709);
+
+    let mut img = DynamicImage::new_rgb8(width, height);
+
+    for x in 0..height {
+        for y in 0..width {
+            let r = rgb[(x * width * 3 + y * 3) as usize];
+            let g = rgb[(x * width * 3 + y * 3 + 1) as usize];
+            let b = rgb[(x * width * 3 + y * 3 + 2) as usize];
+            let a = 255;
+            img.put_pixel(y, x, image::Rgba([r, g, b, a]));
+        }
+    }
+
+    img
+}
+
+/// Calculates and returns the strides needed for colorspace conversion
+/// 
+/// Return value: `(rgb_stride, y_stride, cr_stride, cb_stride)`
+/// 
+/// set downsample to true when using 422 conversion, false when using 444
+fn get_strides(width: u32, downsample: bool) -> (u32, u32, u32, u32) {
+	let rgb_stride = width * 3;  // 3 bytes per pixel for RGB
+    let y_stride = width;        // 1 byte per pixel for Y
+    let cr_stride = if downsample {(width + 1) / 2} else {width}; // subsampled horizontally
+    let cb_stride = if downsample {(width + 1) / 2} else {width}; // subsampled horizontally
+
+    (rgb_stride, y_stride, cr_stride, cb_stride)
+}
