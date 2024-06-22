@@ -5,7 +5,7 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "An easy-to-use crate to embed color watermarks, using DCT and QIM-DM"
 readme = "README.md"
-repository = "https://github.com/haroldxie7677/color_watermark"
+repository = "https://github.com/haroldxie2308/color_watermark"
 
 [dependencies]
 bitvec = "1.0.1"
