@@ -166,6 +166,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 
 [[package]]
+name = "color_watermark"
+version = "0.1.0"
+dependencies = [
+ "bitvec",
+ "image",
+ "rand",
+ "rand_chacha",
+ "rustdct",
+ "yuvutils-rs",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -341,18 +353,6 @@ checksum = "d730b085583c4d789dfd07fdcf185be59501666a90c97c40162b37e4fdad272d"
 dependencies = [
  "byteorder-lite",
  "thiserror",
-]
-
-[[package]]
-name = "img_watermarking"
-version = "0.1.0"
-dependencies = [
- "bitvec",
- "image",
- "rand",
- "rand_chacha",
- "rustdct",
- "yuvutils-rs",
 ]
 
 [[package]]

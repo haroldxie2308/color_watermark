@@ -22,18 +22,8 @@ pub fn embed_watermark(
     let (h_width, h_height) = host.dimensions();
     assert!(h_width == 512 && h_height == 512);
 
-    // Set up YCrCb plane buffer
-    let mut y_plane: Vec<u8> = vec![0_u8; (h_width * h_height) as usize];
-    let mut cr_plane: Vec<u8> = vec![0_u8; (h_width * h_height) as usize];
-    let mut cb_plane: Vec<u8> = vec![0_u8; (h_width * h_height) as usize];
-
     // Convert the image to YCrCb colorspace
-    colorspace::convert_to_YCrCb(
-        &host,
-        y_plane.as_mut_slice(),
-        cr_plane.as_mut_slice(),
-        cb_plane.as_mut_slice()
-    );
+    let (mut y_plane, cr_plane, cb_plane) = colorspace::convert_to_YCrCb(&host);
 
     // Split Y plane into 8 * 8 blocks for DCT operation
     let mut y_blocks = dct::split_into_blocks(
@@ -55,7 +45,7 @@ pub fn embed_watermark(
     // QIM-DM to embed the watermark with the preset key and step_size
     let dithers = qim::generate_dither_signal(12, step_size, key);
     for (i, bits) in wm_bits.chunks(12).enumerate() {
-        qim::embed_watermark(&mut y_blocks[i], &bits.to_bitvec(), &dithers, step_size);
+        qim::embed_wm(&mut y_blocks[i], &bits.to_bitvec(), &dithers, step_size);
     }
 
     // IDCT on watermarked Y blocks
@@ -81,21 +71,19 @@ pub fn embed_watermark(
 /// Extract the colored watermark embedded using DCT + QIM-DM watermarking scheme
 /// 
 /// Returns the original bit stream and the reconstructed RGB DynamicImage
-pub fn extract_watermark(watermarked_image: &str, key: u64, step_size: f32) -> (BitVec, DynamicImage) {
+/// 
+/// Works with images of size 512 * 512 and watermark of size 128 * 128, 
+/// with watermark embedded in implementation specific locations
+pub fn extract_watermark(
+    watermarked_image: &str,
+    key: u64,
+    step_size: f32
+) -> (BitVec, DynamicImage) {
     let wmkd_image = image::open(watermarked_image).unwrap();
     let (width, height) = wmkd_image.dimensions();
 
     // Convert the watermarked image to YCrCb colorspace and DCT on Y blocks
-    let mut wmkd_y_plane: Vec<u8> = vec![0_u8; (width * height) as usize];
-    let mut cr_plane: Vec<u8> = vec![0_u8; (width * height) as usize];
-    let mut cb_plane: Vec<u8> = vec![0_u8; (width * height) as usize];
-
-    colorspace::convert_to_YCrCb(
-        &wmkd_image,
-        wmkd_y_plane.as_mut_slice(),
-        cr_plane.as_mut_slice(),
-        cb_plane.as_mut_slice()
-    );
+    let (mut wmkd_y_plane, _, _) = colorspace::convert_to_YCrCb(&wmkd_image);
 
     let mut wmkd_y_blocks = dct::split_into_blocks(
                                         &mut wmkd_y_plane,
@@ -109,7 +97,7 @@ pub fn extract_watermark(watermarked_image: &str, key: u64, step_size: f32) -> (
     let dithers = qim::generate_dither_signal(12, step_size, key);
     let mut extracted_wm: BitVec<usize, Lsb0> = BitVec::new();
     for block in wmkd_y_blocks.iter() {
-        let tmp = qim::extract_watermark(&block, &dithers, step_size);
+        let tmp = qim::extract_wm(&block, &dithers, step_size);
         for bit in tmp {
             extracted_wm.push(bit);
         }
@@ -125,7 +113,20 @@ pub fn extract_watermark(watermarked_image: &str, key: u64, step_size: f32) -> (
 mod tests {
     use super::*;
     use image::GenericImageView;
-    use bitvec::prelude::*;
+
+    #[test]
+    fn test_3bit_recodification() {
+        use color_recode::*;
+        let wm = image::open("test_images/wm_img1.png").unwrap();
+        let (w, h) = wm.dimensions();
+        recode_to_rgb(&recode_to_3bits(&wm), w, h)
+            .save("test_results/wm_img1_recoded.png").unwrap();
+
+        let wm = image::open("test_images/wm_img2.png").unwrap();
+        let (w, h) = wm.dimensions();
+        recode_to_rgb(&recode_to_3bits(&wm), w, h)
+            .save("test_results/wm_img2_recoded.png").unwrap();
+    }
 
     #[test]
     fn test_2d_dct() {
@@ -140,7 +141,7 @@ mod tests {
         dct::apply_2d_dct(&mut blocks_b);
 
         let transformed_image = dct::reconstruct_image_from_rgb(&blocks_r, &blocks_g, &blocks_b, width, height);
-        transformed_image.save("test_results/pepper_2ddct.tiff").expect("Failed to save image");
+        transformed_image.save("test_results/pepper_2ddct.png").expect("Failed to save image");
 
         dct::apply_2d_idct(&mut blocks_r);
         dct::apply_2d_idct(&mut blocks_g);
@@ -148,7 +149,7 @@ mod tests {
 
         let unchanged_image = dct::reconstruct_image_from_rgb(&blocks_r, &blocks_g, &blocks_b, width, height);
 
-        unchanged_image.save("test_results/pepper_unchanged_dct.tiff").expect("Failed to save unchanged_image");
+        unchanged_image.save("test_results/pepper_unchanged_dct.png").expect("Failed to save unchanged_image");
     }
 
     #[test]
@@ -156,17 +157,12 @@ mod tests {
         let image_path = "test_images/pepper.tiff";
         let image = image::open(image_path).unwrap();
         let (width, height) = image.dimensions();
-
-        let mut y_plane: Vec<u8> = Vec::with_capacity((width * height) as usize);
-        let mut cr_plane: Vec<u8> = Vec::with_capacity((width * height) as usize);
-        let mut cb_plane: Vec<u8> = Vec::with_capacity((width * height) as usize);
-
-
-        colorspace::convert_to_YCrCb(&image, y_plane.as_mut_slice(), cr_plane.as_mut_slice(), cb_plane.as_mut_slice());
+        
+        let (mut y_plane, cr_plane, cb_plane) = colorspace::convert_to_YCrCb(&image);
 
         let rgb_img = colorspace::convert_to_RGB(width, height, y_plane.as_slice(), cr_plane.as_slice(), cb_plane.as_slice());
 
-        rgb_img.save("test_results/pepper_unchanged_color.tiff").unwrap();
+        rgb_img.save("test_results/pepper_unchanged_color.png").unwrap();
     }
 
     #[test]
@@ -179,18 +175,9 @@ mod tests {
         let image = image::open(image_path).unwrap();
         let (width, height) = image.dimensions();
 
-        // Set up YCrCb plane buffer
-        let mut y_plane: Vec<u8> = vec![0_u8; (width * height) as usize];
-        let mut cr_plane: Vec<u8> = vec![0_u8; (width * height) as usize];
-        let mut cb_plane: Vec<u8> = vec![0_u8; (width * height) as usize];
-
         // Convert the image to YCrCb colorspace
-        colorspace::convert_to_YCrCb(
-            &image,
-            y_plane.as_mut_slice(),
-            cr_plane.as_mut_slice(),
-            cb_plane.as_mut_slice()
-        );
+        let (mut y_plane, cr_plane, cb_plane) = colorspace::convert_to_YCrCb(&image);
+
 
         // Split Y plane into 8 * 8 blocks for DCT operation
         let mut y_blocks = dct::split_into_blocks(
@@ -203,7 +190,7 @@ mod tests {
         dct::apply_2d_dct(&mut y_blocks);
 
         // Load the watermark image
-        let wm_path = "test_images/wm_img.png";
+        let wm_path = "test_images/wm_img1.png";
         let wm_image = image::open(wm_path).unwrap();
         // Recoding the watermark
         let wm_bits = color_recode::recode_to_3bits(&wm_image);
@@ -211,18 +198,18 @@ mod tests {
         // QIM-DM to embed the watermark with the preset key and step_size
         let dithers = qim::generate_dither_signal(12, step_size, key);
         for (i, bits) in wm_bits.chunks(12).enumerate() {
-            qim::embed_watermark(&mut y_blocks[i], &bits.to_bitvec(), &dithers, step_size);
+            qim::embed_wm(&mut y_blocks[i], &bits.to_bitvec(), &dithers, step_size);
         }
 
         // In between embedding result test
         let mut extracted_wm: BitVec<usize, Lsb0> = BitVec::new();
         for block in y_blocks.iter() {
-            let tmp = qim::extract_watermark(&block, &dithers, step_size);
+            let tmp = qim::extract_wm(&block, &dithers, step_size);
             for bit in tmp {
                 extracted_wm.push(bit);
             }
         }
-        color_recode::recode_to_rgb(&extracted_wm, 128, 128).save("test_results/in_between.tiff").unwrap();
+        color_recode::recode_to_rgb(&extracted_wm, 128, 128).save("test_results/in_between.png").unwrap();
 
 
         // IDCT on watermarked Y blocks
@@ -245,24 +232,16 @@ mod tests {
                                             );
 
         // Save the watermarked image
-        wmd_image.save("test_results/watermarked_img.tiff").unwrap();
+        wmd_image.save("test_results/watermarked_img.png").unwrap();
 
 
         // ************ Extracting the watermark ***************
-        let wmkd_image = image::open("test_results/watermarked_img.tiff").unwrap();
+        let wmkd_image = image::open("test_results/watermarked_img.png").unwrap();
         let (width, height) = wmkd_image.dimensions();
 
         // Convert the watermarked image to YCrCb colorspace and DCT on Y blocks
-        let mut wmkd_y_plane: Vec<u8> = vec![0_u8; (width * height) as usize];
-        let mut cr_plane: Vec<u8> = vec![0_u8; (width * height) as usize];
-        let mut cb_plane: Vec<u8> = vec![0_u8; (width * height) as usize];
+        let (mut wmkd_y_plane, _, _) = colorspace::convert_to_YCrCb(&image);
 
-        colorspace::convert_to_YCrCb(
-            &wmkd_image,
-            wmkd_y_plane.as_mut_slice(),
-            cr_plane.as_mut_slice(),
-            cb_plane.as_mut_slice()
-        );
 
         let mut wmkd_y_blocks = dct::split_into_blocks(
                                             &mut wmkd_y_plane,
@@ -275,7 +254,7 @@ mod tests {
         // Extract the watermark from each block
         let mut extracted_wm: BitVec<usize, Lsb0> = BitVec::new();
         for block in wmkd_y_blocks.iter() {
-            let tmp = qim::extract_watermark(&block, &dithers, step_size);
+            let tmp = qim::extract_wm(&block, &dithers, step_size);
             for bit in tmp {
                 extracted_wm.push(bit);
             }
@@ -283,6 +262,34 @@ mod tests {
 
         // Reconstruct the image from bits and save the recovered watermark
         let reconstructed_wm = color_recode::recode_to_rgb(&extracted_wm, 128, 128);
-        reconstructed_wm.save("test_results/reconstructed_wm.tiff").unwrap();
-    }   
+        reconstructed_wm.save("test_results/reconstructed_wm.png").unwrap();
+    }
+
+    #[test]
+    fn test_interface() {
+        let k = 2143658709;
+        for i in vec![1, 2] {
+            let wm_path = format!("test_images/wm_img{}.png", i);
+            for ss in vec![10.0, 20.0, 50.0, 100.0] {
+                for image in std::fs::read_dir("test_images").unwrap() {
+                    let image = image.unwrap();
+                    let path = image.path();
+
+                    if let Some(ext) = path.extension() {
+                        if ext == "tiff" {
+                            println!("Embedding {} into {} with step_size {}", wm_path, path.to_string_lossy(), ss as u32);
+                            let wmkd_image_path = format!("embed_extract{}/{}_{}_wmkd_image.png", i, ss as u32, path.file_stem().unwrap().to_string_lossy());
+                            let wmkd_img = embed_watermark(&path.to_string_lossy(), &wm_path, k, ss);
+                            wmkd_img.save(&wmkd_image_path).unwrap();
+
+                            println!("Extracting watermark from {}", wmkd_image_path);
+                            let (_, extracted_wm) = extract_watermark(&wmkd_image_path, k, ss);
+                            let extracted_wm_path = format!("embed_extract{}/{}_{}_extracted_wm.png", i, ss as u32, path.file_stem().unwrap().to_string_lossy());
+                            extracted_wm.save(&extracted_wm_path).unwrap();
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

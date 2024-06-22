@@ -7,6 +7,9 @@ const BLK_WIDTH: usize = 8;
 /// Splits a dynamic image into 8 * 8 blocks
 /// 
 /// Returns (r, g, b) in form of Vec of (Vec of 64 * f32)
+/// 
+/// For test purpose only
+#[doc(hidden)]
 pub fn split_image_into_blocks(image: &DynamicImage) -> 
     (Vec<Vec<f32>>, Vec<Vec<f32>>, Vec<Vec<f32>>) {
     let (width, height) = image.dimensions();
@@ -153,7 +156,7 @@ pub fn apply_2d_idct(blocks: &mut Vec<Vec<f32>>) {
     }
 }
 
-/// This function is for test purpose only.
+/// For test purpose only.
 #[doc(hidden)]
 pub fn reconstruct_image_from_rgb(
     blocks_r: &Vec<Vec<f32>>,

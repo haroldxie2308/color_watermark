@@ -4,9 +4,8 @@ use bitvec::prelude::*;
 /// Recodes the original picture color info into 3-bit color representation scheme
 pub fn recode_to_3bits(image: &DynamicImage) -> BitVec {
 	let mut ret = BitVec::new();
-    let rgb_bytes = image.as_bytes();
 
-    for byte in rgb_bytes {
+    for byte in image.as_bytes() {
     	if *byte > 127 {
     		ret.push(true);
     	} else {
@@ -30,25 +29,23 @@ pub fn recode_to_rgb(bits: &BitVec, width: u32, height: u32) -> DynamicImage {
             match i % 3 {
                 0 => { r = 255; }
                 1 => { g = 255; }
-                2 => {
+                _ => {
                     let b = 255;
                     image.put_pixel(x, y, image::Rgba([r, g, b, 255]));
                     y += if x + 1 == width { 1 } else { 0 };
                     x = (x + 1) % width;
                 }
-                _ => panic!("Impossible value of i % 3")
             };
         } else {
             match i % 3 {
                 0 => { r = 0; }
                 1 => { g = 0; }
-                2 => {
+                _ => {
                     let b = 0;
                     image.put_pixel(x, y, image::Rgba([r, g, b, 255]));
                     y += if x + 1 == width { 1 } else { 0 };
                     x = (x + 1) % width;
                 }
-                _ => panic!("Impossible value of i % 3")
             };
         }
     }

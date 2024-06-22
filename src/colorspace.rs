@@ -3,24 +3,26 @@ use yuvutils_rs::*;
 
 /// Takes an RGB DynamicImage and convert to YCrCb
 /// 
-/// Return values are saved in y_plane, cr_plane and cb_plane
+/// Return value: `(y_plane, cr_plane, cb_plane)`
 #[allow(non_snake_case)]
-pub fn convert_to_YCrCb(
-    image: &DynamicImage,
-    y_plane: &mut [u8],
-    cr_plane: &mut [u8],
-    cb_plane: &mut [u8]
-) {
+pub fn convert_to_YCrCb(image: &DynamicImage) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+    let (width, height) = image.dimensions();
+    let mut y_plane: Vec<u8> = vec![0_u8; (width * height) as usize];
+    let mut cr_plane: Vec<u8> = vec![0_u8; (width * height) as usize];
+    let mut cb_plane: Vec<u8> = vec![0_u8; (width * height) as usize];
+
     let rgb = image.as_bytes();
     let (width, height) = image.dimensions();
     let (rgb_stride, y_stride, cr_stride, cb_stride) = get_strides(width, false);
 
-    rgb_to_yuv444(y_plane, y_stride,
-                  cr_plane, cr_stride,
-                  cb_plane, cb_stride,
+    rgb_to_yuv444(y_plane.as_mut_slice(), y_stride,
+                  cr_plane.as_mut_slice(), cr_stride,
+                  cb_plane.as_mut_slice(), cb_stride,
                   &rgb, rgb_stride,
                   width, height, 
                   YuvRange::Full, YuvStandardMatrix::Bt709);
+
+    (y_plane, cr_plane, cb_plane)
 }
 
 /// Convert YCrCb to RGB DynamicImage
