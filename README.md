@@ -14,6 +14,7 @@ let step_size = 50.0;
 let watermarked_img = embed_watermark("path/to/host_image", "path/to/watermark", key, step_size);
 watermarked_img.save("path/to/watermarked_img");
 
-let extracted_wm = extract_watermark("path/to/watermarked_img", key, step_size);
+// Return value: (BitVec, DynamicImage)
+let (_, extracted_wm) = extract_watermark("path/to/watermarked_img", key, step_size);
 extracted_wm.save("path/to/extracted_wm");
 ```
