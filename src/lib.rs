@@ -22,7 +22,7 @@ pub fn embed_watermark(
     let (h_width, h_height) = host.dimensions();
     assert!(h_width == 512 && h_height == 512);
 
-    // Convert the image to YCrCb colorspace
+    // Convert the image to YCbCr colorspace
     let (mut y_plane, cb_plane, cr_plane) = colorspace::convert_to_YCbCr(&host);
 
     // Split Y plane into 8 * 8 blocks for DCT operation
@@ -82,7 +82,7 @@ pub fn extract_watermark(
     let wmkd_image = image::open(watermarked_image).unwrap();
     let (width, height) = wmkd_image.dimensions();
 
-    // Convert the watermarked image to YCrCb colorspace and DCT on Y blocks
+    // Convert the watermarked image to YCbCr colorspace and DCT on Y blocks
     let (mut wmkd_y_plane, _, _) = colorspace::convert_to_YCbCr(&wmkd_image);
 
     let mut wmkd_y_blocks = dct::split_into_blocks(
@@ -175,7 +175,7 @@ mod tests {
         let image = image::open(image_path).unwrap();
         let (width, height) = image.dimensions();
 
-        // Convert the image to YCrCb colorspace
+        // Convert the image to YCbCr colorspace
         let (mut y_plane, cb_plane, cr_plane) = colorspace::convert_to_YCbCr(&image);
 
 
@@ -239,8 +239,8 @@ mod tests {
         let wmkd_image = image::open("test_results/watermarked_img.png").unwrap();
         let (width, height) = wmkd_image.dimensions();
 
-        // Convert the watermarked image to YCrCb colorspace and DCT on Y blocks
-        let (mut wmkd_y_plane, _, _) = colorspace::convert_to_YCbCr(&image);
+        // Convert the watermarked image to YCbCr colorspace and DCT on Y blocks
+        let (mut wmkd_y_plane, _, _) = colorspace::convert_to_YCbCr(&wmkd_image);
 
 
         let mut wmkd_y_blocks = dct::split_into_blocks(
